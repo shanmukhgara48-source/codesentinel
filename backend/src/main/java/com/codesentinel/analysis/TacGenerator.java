@@ -328,6 +328,8 @@ public class TacGenerator {
         Node callee = n.children.getFirst();
         if (!callee.kind.equals("Identifier") || !callee.text("category").equals("FUNCTION"))
           throw new UnsupportedIR(n, "Indirect function calls are not lowered.");
+        if (n.children.subList(1, n.children.size()).stream().filter(arg -> volatileReads(arg) > 0).count() > 1)
+          throw new UnsupportedIR(n, "Multiple unsequenced volatile call arguments are outside the TAC ordering model.");
         List<String> args = new ArrayList<>();
         args.add(expression(callee).ref());
         for (Node arg : n.children.subList(1, n.children.size())) {
@@ -393,6 +395,13 @@ public class TacGenerator {
 
   private long volatileReads(Node n) {
     if (n.kind.equals("Sizeof")) return 0;
+    if (n.kind.equals("Unary") && n.text("operator").equals("&") && !n.children.isEmpty()) {
+      Node operand = n.children.getFirst();
+      if (operand.kind.equals("Identifier")) return 0;
+      if (operand.kind.equals("Index")) return operand.children.stream().mapToLong(this::volatileReads).sum();
+      if (operand.kind.equals("Unary") && operand.text("operator").equals("*"))
+        return operand.children.stream().mapToLong(this::volatileReads).sum();
+    }
     if ((n.kind.equals("Identifier") && n.text("type").contains("volatile")
             && ((Number) n.attributes.getOrDefault("pointerDepth", 0)).intValue() == 0
             && ((List<?>) n.attributes.getOrDefault("arrayDimensions", List.of())).isEmpty())
@@ -426,6 +435,8 @@ public class TacGenerator {
                         && c.children.getFirst().text("symbolId").equals(lhs.text("symbolId"))))
       throw new UnsupportedIR(
           n, "Repeated writes to the assignment target inside its value are not lowered.");
+    if (!lhs.kind.equals("Identifier") && volatileReads(lhs) > 0 && volatileReads(rhs) > 0)
+      throw new UnsupportedIR(n, "Unsequenced volatile reads across a memory target and value are not lowered.");
     if (!lhs.kind.equals("Identifier")
         && n.all().stream()
             .skip(1)

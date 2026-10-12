@@ -16,6 +16,10 @@ class ReliabilityTest {
     long reads = java.util.stream.StreamSupport.stream(instructions.spliterator(), false)
         .filter(i -> i.path("op").asText().equals("READ")).count();
     assertEquals(2, reads, "Both discarded and consumed volatile reads are observable");
+    var sequenced = analyze("int use(int x){return x;}int f(void){volatile int v=1;return use((v,v));}");
+    var addresses = analyze("void use(volatile int*a,volatile int*b){}int f(void){volatile int v=1;use(&v,&v);return 0;}");
+    assertEquals("COMPLETED", addresses.path("modules").path("tac").path("data").get(1).path("status").asText());
+    assertEquals("COMPLETED", sequenced.path("modules").path("tac").path("data").get(1).path("status").asText());
   }
 
   @Test void sizeofDoesNotInventExecutedCallsOrResourceSites() {
@@ -66,9 +70,9 @@ class ReliabilityTest {
   @Test void invalidTargetsAndCallsNeverPublishCompleteTac() {
     for (String source : java.util.List.of("int f(void){int x=1;return x();}",
         "int f(void){int a[3];a=0;return 0;}", "int f(void){const int x=1;x=2;return x;}",
-        "int f(void){volatile int v=1;return v+v;}", "int f(volatile int*p){return *p+*p;}", "int f(void){*1=0;return 0;}", "int f(const int *p){*p=1;return 0;}", "int f(void){return *1;}", "int f(int x){return x[0];}", "int f(int *p){return -p;}")) {
+        "int use(int a,int b){return a;}int f(void){volatile int v=1;return use(v,v);}", "int f(void){int a[3];volatile int v=1;a[v]=v;return 0;}", "int f(void){volatile int v=1;return v+v;}", "int f(volatile int*p){return *p+*p;}", "int f(void){*1=0;return 0;}", "int f(const int *p){*p=1;return 0;}", "int f(void){return *1;}", "int f(int x){return x[0];}", "int f(int *p){return -p;}")) {
       var r = analyze(source);
-      assertEquals("SKIPPED", r.path("modules").path("tac").path("data").get(0).path("status").asText(), source);
+      assertEquals("SKIPPED", r.path("modules").path("tac").path("data").get(r.path("modules").path("tac").path("data").size()-1).path("status").asText(), source);
     }
   }
 }
