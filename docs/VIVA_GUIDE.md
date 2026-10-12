@@ -21,11 +21,12 @@ Demonstrate one real C program through the Java analysis pipeline, then explain 
 3. **0:50–1:15:** Diagnostics → Security → expand the unbounded input finding → follow its line link. Explain `%s` and the missing field width.
 4. **1:15–1:50:** Optimization. Show `2 * 8` becoming 16, the following chain becoming 17 and 20, and both pass names. Counts are unchanged because no instruction-removal pass is implemented.
 5. **1:50–2:20:** Control flow → select a block. Explain true/false edges, loop back edges, continue’s update target, and return edges to exit.
-6. **2:20–3:00:** Additional analysis → checked malloc and visible free. Export JSON and explain source exclusion/redaction/coverage.
+6. **2:20–2:40:** Compiler → Data flow → show the fixed point, then the final unchanged iteration.
+7. **2:40–3:00:** Additional analysis → checked malloc and visible free. Export JSON and explain source exclusion/redaction/coverage.
 
 ## Five-minute expanded pipeline walkthrough
 
-Add a full AST initializer expansion and the resolved `base`/`score` IDs. Open the transformation log and follow a rewrite’s source location. Select a CFG branch block and its loop target, then show per-function complexity (1 + three if decisions + one loop = 5 for the hero). Open Help or Compiler → Data flow and identify deferred live-variable analysis. Finish with syntax-error recovery.
+Add a full AST initializer expansion and the resolved `base`/`score` IDs. Open the transformation log and follow a rewrite’s source location. Select a CFG branch block and its loop target, then show per-function complexity (1 + three if decisions + one loop = 5 for the hero). Open Compiler → Data flow, switch between live variables and reaching definitions, and inspect the final unchanged iteration. Finish with syntax-error recovery.
 
 ## Worked TAC and optimization example
 
@@ -41,7 +42,7 @@ Comments saying “scanf” do not trigger the rule. A custom source-defined `st
 
 ## CFG explanation
 
-A basic block contains a straight-line instruction region. Labels and instructions after branch/jump/return terminators begin blocks. `CfgBuilder` connects blocks using the optimized instruction targets. Synthetic entry/exit nodes show the function boundary. True/false edges come from BRANCH, fall-through edges from sequential blocks, and returns lead to exit. A back edge targets an earlier emitted block. The display retains disconnected blocks because DCE is deferred. Select a block to inspect the underlying structured instructions.
+A basic block contains a straight-line instruction region. Labels and instructions after branch/jump/return terminators begin blocks. `CfgBuilder` connects blocks using the optimized instruction targets. Synthetic entry/exit nodes show the function boundary. True/false edges come from BRANCH, fall-through edges from sequential blocks, and returns lead to exit. A back edge is marked when it targets an earlier emitted block; this label is not a dominance proof. The display retains disconnected blocks because DCE is deferred. Select a block to inspect the underlying structured instructions.
 
 ## Syntax-error recovery
 
@@ -70,7 +71,7 @@ Load Syntax error and Analyze. Show a located C-SYNTAX diagnostic and null downs
 | What did you implement? | Adapter/AST conversion, public scopes/semantic checks, structured TAC, two optimization passes, CFG, rules, metrics, fingerprints, scoring, report projection, and UI. |
 | How does React communicate with Java? | JSON over one POST /api/analyze; Vite proxies /api locally. |
 | Invalid syntax? | A structured diagnostic result with tokens; downstream data/score are unavailable. |
-| What is deferred? | Full preprocessing/types, general pointer/alias/path/interprocedural analyses, DCE, CSE, and live-variable fixed-point analysis. |
+| What is deferred? | Full preprocessing/types, general pointer/alias/path/interprocedural analyses, DCE, CSE, memory-value and path-sensitive data flow. |
 | Does a lower score prove safety? | No. It is rounded/capped severity × confidence across assessed findings. |
 | Is optimization faster in measurements? | We do not run benchmarks or C programs; we show transformations and truthful instruction counts. |
 
@@ -83,6 +84,8 @@ Load Syntax error and Analyze. Show a located C-SYNTAX diagnostic and null downs
 - `backend/src/main/java/com/codesentinel/analysis/TacGenerator.java`
 - `backend/src/main/java/com/codesentinel/analysis/Optimizer.java`
 - `backend/src/main/java/com/codesentinel/analysis/CfgBuilder.java`
+- `backend/src/main/java/com/codesentinel/analysis/IrMetadata.java`
+- `backend/src/main/java/com/codesentinel/analysis/DataFlowAnalyzer.java`
 - `backend/src/main/java/com/codesentinel/analysis/SecurityAnalyzer.java`
 - `backend/src/main/java/com/codesentinel/analysis/AnalysisService.java`
 - `frontend/src/main.jsx`, `compiler.jsx`, `graphs.jsx`

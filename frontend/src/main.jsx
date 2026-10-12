@@ -25,7 +25,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import "./framework.css";
-import { ModuleStatus, Empty, button } from "./ui";
+import { ModuleStatus, Empty, button, tabKeys } from "./ui";
 import {
   AnalysisOverview,
   DiagnosticBrowser,
@@ -95,7 +95,7 @@ function App() {
     !!result &&
     (source !== analyzed?.source || filename !== analyzed?.filename);
   const diagnostics = result ? collectDiagnostics(result) : [];
-  const canExport = !!result && !stale && !loading;
+  const canExport = !!result && !stale && !loading && !error;
   useEffect(() => {
     const abort = new AbortController();
     fetch("/api/health", { signal: abort.signal })
@@ -155,6 +155,11 @@ function App() {
     setLoading(true);
     setError("");
     setSelected(null);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      abort.abort();
+    }, 20000);
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -162,27 +167,55 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(snapshot),
       });
-      const payload = await response.json();
-      if (!payload.success) throw new Error(payload.error);
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new Error(
+          "The backend returned an unreadable response. Check it is running, then retry.",
+        );
+      }
+      if (
+        !response.ok ||
+        !payload.success ||
+        !payload.data?.modules ||
+        !payload.data?.summary ||
+        !payload.data?.sourceMetadata ||
+        typeof payload.data?.analysisId !== "string"
+      )
+        throw new Error(
+          payload.error ||
+            `Analysis request failed (HTTP ${response.status}). Retry after checking the backend.`,
+        );
       if (id !== sequence.current) return;
       setResult(payload.data);
       setAnalyzed(snapshot);
       setHealth(true);
       if (payload.data.status === "PARSE_ERROR") setTab("Diagnostics");
     } catch (e) {
-      if (e.name !== "AbortError" && id === sequence.current)
+      if ((timedOut || e.name !== "AbortError") && id === sequence.current)
         setError(
-          e.message ||
-            "Could not reach the Java backend. Start it and try again.",
+          timedOut
+            ? "Analysis took longer than 20 seconds. Try a smaller program or restart the backend."
+            : (e instanceof TypeError
+                ? "Could not reach the Java backend. Start it and try again."
+                : e.message) ||
+                "Could not reach the Java backend. Start it and try again.",
         );
     } finally {
+      clearTimeout(timeout);
       if (id === sequence.current) setLoading(false);
     }
   }
   function onLocation(range) {
-    if (!range || stale || loading) return;
+    if (!range || stale || loading || error) return;
     setSelected({ ...range, selectionId: Date.now() });
-    editor.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    editor.current?.scrollIntoView({
+      block: "nearest",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
   }
   function exportReport() {
     if (canExport)
@@ -237,15 +270,23 @@ function App() {
   }, [source, filename, loading]);
   const status = loading
     ? "Analyzing your code"
-    : stale
-      ? "Source changed · analyze again"
-      : result
-        ? statusLabels[result.status] || result.status
-        : "Ready to analyze";
+    : error
+      ? "Analysis failed · try again"
+      : stale
+        ? "Source changed · analyze again"
+        : result
+          ? statusLabels[result.status] || result.status
+          : "Ready to analyze";
   return (
-    <div className="min-h-screen bg-[#F3F4F6] font-[Arial,sans-serif] text-[#080B10] antialiased [color-scheme:light]">
+    <div className="motion-reduce:[&_*]:transition-none motion-reduce:[&_*]:animate-none [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[#7947FF] [&_select:focus-visible]:outline-2 [&_select:focus-visible]:outline-[#7947FF] min-h-screen bg-[#F3F4F6] font-[Arial,sans-serif] text-[#080B10] antialiased [color-scheme:light]">
       <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-7 lg:px-10 lg:py-7">
         <header className="flex min-h-[76px] flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[#E5E7EB] bg-white px-4 py-3 sm:px-5">
+          <a
+            href="#analysis-panel"
+            className="sr-only focus:not-sr-only focus:rounded-lg focus:bg-[#F4F0FF] focus:p-3"
+          >
+            Skip to analysis
+          </a>
           <a
             href="/"
             aria-label="CodeSentinel home"
@@ -317,7 +358,10 @@ function App() {
               className="inline-flex h-12 items-center justify-center gap-2.5 rounded-full bg-[#080B10] px-6 text-sm font-medium text-white transition hover:bg-[#292532] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#7947FF] disabled:cursor-not-allowed disabled:opacity-45"
             >
               {loading ? (
-                <LoaderCircle size={16} className="animate-spin" />
+                <LoaderCircle
+                  size={16}
+                  className="animate-spin motion-reduce:animate-none"
+                />
               ) : (
                 <Play size={15} fill="currentColor" />
               )}
@@ -376,7 +420,10 @@ function App() {
                 className="flex items-center gap-1.5 text-[11px] text-[#686C76]"
               >
                 {loading ? (
-                  <LoaderCircle size={13} className="animate-spin" />
+                  <LoaderCircle
+                    size={13}
+                    className="animate-spin motion-reduce:animate-none"
+                  />
                 ) : (
                   <span
                     className={`size-1.5 rounded-full ${result && !stale ? "bg-[#7947FF]" : "bg-[#9CA3AF]"}`}
@@ -463,7 +510,7 @@ function App() {
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#ECEEF1] px-5 py-3 text-[10px] text-[#686C76]">
                 <div className="flex gap-4">
                   <span>{source ? source.split("\n").length : 0} lines</span>
-                  <span>UTF-8</span>
+                  <span>UTF-8 · Esc, then Tab to leave editor</span>
                   <span>
                     {selected
                       ? `Ln ${selected.line}, Col ${selected.column}`
@@ -535,13 +582,14 @@ function App() {
                     ) : (
                       <Check size={11} />
                     )}
-                    {stale ? "Previous result" : "Result ready"}
+                    {stale || error ? "Previous result" : "Result ready"}
                   </span>
                 )}
               </div>
               <div
                 role="tablist"
                 aria-label="Analysis sections"
+                onKeyDown={tabKeys}
                 className="flex gap-1 overflow-x-auto border-b border-[#ECEEF1] px-4 py-3"
               >
                 {tabs.map((t) => (
@@ -551,6 +599,7 @@ function App() {
                     role="tab"
                     aria-controls="analysis-panel"
                     aria-selected={tab === t}
+                    tabIndex={tab === t ? 0 : -1}
                     onClick={() => setTab(t)}
                     className={`shrink-0 rounded-full px-3 py-2 text-[11px] font-medium transition ${tab === t ? "bg-[#F0EAFF] text-[#6131CA]" : "text-[#686C76] hover:bg-[#F3F4F6]"}`}
                   >
@@ -568,6 +617,7 @@ function App() {
               <div
                 id="analysis-panel"
                 role="tabpanel"
+                tabIndex={0}
                 aria-labelledby={`tab-${tab.replaceAll(" ", "-")}`}
                 aria-busy={loading}
                 className="min-h-[550px] p-4 sm:p-5 lg:h-[616px] lg:min-h-0 lg:overflow-y-auto"
@@ -578,7 +628,10 @@ function App() {
                     className="flex min-h-[530px] flex-col items-center justify-center text-center"
                   >
                     <div className="mb-6 flex size-16 items-center justify-center rounded-[22px] bg-[#F4F0FF] text-[#7947FF]">
-                      <LoaderCircle size={28} className="animate-spin" />
+                      <LoaderCircle
+                        size={28}
+                        className="animate-spin motion-reduce:animate-none"
+                      />
                     </div>
                     <h3 className="text-lg tracking-tight">
                       Making sense of your code
@@ -658,6 +711,7 @@ function App() {
                       )}
                       {tab === "Compiler" && (
                         <Compiler
+                          key={`compiler-${result.analysisId}`}
                           result={result}
                           onLocation={onLocation}
                           initialTab="AST"
@@ -817,8 +871,9 @@ function App() {
             <p>
               Only single-file laboratory C and a limited stdio.h, stdlib.h,
               string.h, and stddef.h catalog are modeled. Macros and unsupported
-              constructs can withhold results. Live-variable analysis is not
-              implemented.
+              constructs can withhold results. Live variables and reaching
+              definitions explain scalar data flow with fixed-point traces.
+              Memory contents and full C types remain outside the model.
             </p>
             <p>
               Editing the source makes existing results stale. Analyze again to

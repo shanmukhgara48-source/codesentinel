@@ -7,7 +7,9 @@ import {
   Unavailable,
   Diagnostics,
   muted,
+  tabKeys,
 } from "./ui";
+import DataFlow from "./dataflow";
 import { AstExplorer, Cfg } from "./graphs";
 const tabs = [
   "Tokens",
@@ -45,12 +47,14 @@ export default function Compiler({
           className="mb-5 flex flex-wrap gap-x-5 gap-y-1 border-b border-[#E5E7EB]"
           role="tablist"
           aria-label="Compiler stages"
+          onKeyDown={tabKeys}
         >
           {stages.map((t) => (
             <button
               key={t}
               role="tab"
               aria-selected={tab === t}
+              tabIndex={tab === t ? 0 : -1}
               onClick={() => setTab(t)}
               className={`border-b-2 px-0.5 py-3 text-[13px] transition-colors ${tab === t ? "border-[#7947FF] font-medium text-[#080B10]" : "border-transparent text-[#686C76] hover:text-[#080B10]"}`}
             >
@@ -117,6 +121,7 @@ export default function Compiler({
         <AstExplorer
           key={result.analysisId}
           module={modules.ast}
+          result={result}
           onLocation={onLocation}
         />
       )}{" "}
@@ -269,7 +274,42 @@ export default function Compiler({
                             <span className="w-5 shrink-0 select-none text-right text-[#8B8F99]">
                               {index + 1}
                             </span>
-                            <code className="whitespace-pre">{i.text}</code>
+                            <div className="min-w-0 flex-1">
+                              <button
+                                onClick={() => onLocation(i.range)}
+                                className="whitespace-pre text-left hover:text-[#6534CC]"
+                                aria-label={`View instruction ${i.id} in source`}
+                              >
+                                {i.text}
+                              </button>
+                              <details className="font-sans text-[10px] leading-5 text-[#686C76]">
+                                <summary className="cursor-pointer">
+                                  Operands & effects · AST {i.nodeId}
+                                </summary>
+                                <p>
+                                  {i.operands
+                                    ?.map((o) => `${o.ref}: ${o.type}`)
+                                    .join(" · ") || "No value operands"}
+                                </p>
+                                <p>
+                                  Uses: {i.effects?.uses.join(", ") || "∅"};
+                                  defines:{" "}
+                                  {i.effects?.defines.join(", ") || "∅"}
+                                </p>
+                                <p>
+                                  {[
+                                    i.effects?.calls && "call",
+                                    i.effects?.readsMemory && "reads memory",
+                                    i.effects?.writesMemory && "writes memory",
+                                    i.effects?.volatileAccess && "volatile",
+                                    i.effects?.mayTrap && "may trap",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ") ||
+                                    "No modeled external effect"}
+                                </p>
+                              </details>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -346,7 +386,7 @@ export default function Compiler({
         />
       )}{" "}
       {tab === "Data flow" && (
-        <Unavailable module={modules.dataFlow} label="Live-variable analysis" />
+        <DataFlow module={modules.dataFlow} onLocation={onLocation} />
       )}
     </>
   );

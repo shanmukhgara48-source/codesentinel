@@ -23,6 +23,12 @@ public class ApiErrors {
     return error(413, "SOURCE_TOO_LARGE", "Source must be at most 64 KiB.");
   }
 
+  @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity<?> method() { return error(405, "METHOD_NOT_ALLOWED", "Use the documented HTTP method for this endpoint."); }
+
+  @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+  public ResponseEntity<?> media() { return error(415, "UNSUPPORTED_MEDIA_TYPE", "Send application/json for analysis requests."); }
+
   @ExceptionHandler(Exception.class)
   public ResponseEntity<?> internal() {
     return error(

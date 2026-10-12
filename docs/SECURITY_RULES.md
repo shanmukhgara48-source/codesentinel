@@ -12,12 +12,12 @@ Findings are static review hints, with stable rule IDs, severity, confidence, so
 | CS-SEC-002 | `strcpy` | Medium / Medium | Direct call lacking a capacity argument. Review input length and use an explicit-capacity operation. |
 | CS-SEC-003 | `strcat` | Medium / Medium | Same capacity review for concatenation. |
 | CS-SEC-004 | `sprintf` | Medium / Medium | Same capacity review for formatting; prefer bounded output with truncation checks. |
-| CS-SEC-005 | Unbounded literal-format string input | High / High | `scanf`, `sscanf`, or `fscanf` format contains an unsuppressed `%s` without a usable width. Set a width below buffer capacity or use fgets. |
+| CS-SEC-005 | Unbounded literal-format string input | High / High | `scanf`, `sscanf`, or `fscanf` format contains an unsuppressed `%s` or `%[` without a usable width. Set a width below buffer capacity or use fgets. |
 | CS-SEC-006 | Input-derived `system` argument | High / Medium | Simple local input-destination/identifier-assignment provenance reaches system. Avoid untrusted shell command text. |
 | CS-SEC-007 | Unknown `system` provenance | Informational / Low | Argument origin cannot be established; review it manually. A literal constant produces no injection warning. |
 | CS-SEC-008 | Credential-like name assigned a string literal | Medium / Low | Name includes password, passwd, pwd, api_key/apikey, secret, or token. Review placeholder versus real credential and move real values into runtime configuration. |
 
-`unboundedString` scans escaped percent signs, suppression, field widths, and length modifiers. `%%s`, `%*s`, and `%15s` do not trigger the unbounded `%s` rule. The rule concerns that conversion only; bounded input still requires correct capacity and return-value checks. Scansets and dynamic formats have no dedicated capacity rule in this release.
+`unboundedString` scans escaped percent signs, suppression, field widths, and length modifiers. `%%s`, `%*s`, and `%15s` do not trigger the unbounded `%s` rule. The rule concerns that conversion only; bounded input still requires correct capacity and return-value checks. Scansets use the same width/suppression check; dynamic formats have no dedicated capacity rule.
 
 Provenance is limited to the same function and simple assignments; control-flow boundaries and opaque effects lose uncertain classifications. This is not a full taint analysis. No assertion is made about whether a shell executes, whether input is malicious, or whether a library call overflows a particular buffer.
 

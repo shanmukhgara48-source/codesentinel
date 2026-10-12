@@ -28,6 +28,14 @@ class ApiTest {
   }
 
   @Test
+  void methodAndContentTypeErrorsKeepTheApiEnvelope() throws Exception {
+    mvc.perform(get("/api/analyze")).andExpect(status().isMethodNotAllowed())
+        .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+    mvc.perform(post("/api/analyze").contentType("text/plain").content("int f(void){return 1;}"))
+        .andExpect(status().isUnsupportedMediaType()).andExpect(jsonPath("$.success").value(false));
+  }
+
+  @Test
   void healthAndSamples() throws Exception {
     mvc.perform(get("/api/health"))
         .andExpect(status().isOk())

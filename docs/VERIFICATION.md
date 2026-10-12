@@ -1,29 +1,32 @@
-# CodeSentinel review verification
+# CodeSentinel verification record
 
-Verified locally on 12 October 2026 with Java 21 and Node 24. This record describes the current checkout after the code review and fixes.
+Verified locally on 12 October 2026 with Java 21 and Node 24. These checks describe the reviewed implementation and its stated boundary.
 
 ## Completed checks
 
-- `CI=1 ./scripts/test.sh`: 73 JUnit/MockMvc backend tests passed with no failures, errors, or skips.
+- `CI=1 ./scripts/test.sh`: **90 JUnit/MockMvc tests**, zero failures, errors, or skips.
 - Frontend production build passed.
-- 11 Playwright Chromium cases passed against the actual Java backend, with managed fresh services.
-- The exact demonstration journey passed three times in fresh browser contexts: analysis, findings/source highlighting, AST, symbols, unavailable data flow, actual TAC rewrites, CFG selection/zoom/reset, resources, and exact JSON export.
-- Other browser cases cover syntax/preprocessing recovery, stale protection, superseded requests, upload/reset/dialogs/keyboard analysis, the new diagnostic categories, and layouts at 320/768/1440 pixels.
-- `shasum -a 256 -c SHA256SUMS` passed for all eight preserved vendor files.
-- Packaged startup and local API/browser smoke checks were performed after the full suite. The startup port guard refuses a second launch.
+- **16 Playwright Chromium cases** passed against the packaged Java application and built frontend, with managed fresh services.
+- The documented demonstration passed **three times in fresh browser contexts**: real analysis, security/source highlighting, AST and symbols, converged data flow and the final unchanged round, original/optimized TAC, CFG selection/fit/zoom/reset, resources, and exact JSON export. Each rehearsal checked browser exceptions and console errors.
+- Responsive cases cover 320/768/1440px, plus a 390px reduced-motion/data-flow case. Actual captures cover desktop, tablet, and mobile.
+- Failure cases cover syntax/preprocessing recovery, excessive-expression API errors, unreadable backend responses, a 20-second client timeout, and stale/superseded results. The timeout test uses a controlled route and virtual browser clock; normal analysis tests use the real Java API.
+- Educational cases cover source connections, typed instruction details, final iteration traces, tab keyboard navigation, editor escape, and 100-row token pagination on 2,250 tokens.
+- All eight preserved vendor checksums passed with `shasum -a 256 -c SHA256SUMS`.
 
-See [Code review and fixes](CODE_REVIEW.md) for the issues and regression coverage. The [product guide](PRODUCT_GUIDE.md) describes existing features in simple English.
+Backend tests independently check both fixed-point equations on a branch/loop CFG, both writes at joins, unreachable paths, uncertain memory writes, typed metadata after rewrites, and budget refusal. Reliability tests check volatile reads, unevaluated calls/releases, invalid targets, global errors, source ranges, qualified pointers, scansets, and return boundaries. Existing arithmetic, short-circuit, loop-target, redaction, parser-limit, scope, and API regressions remain covered.
 
-## Evidence boundaries
+## Rendering observation
 
-Tests inspect structured results and the real frontend/API interaction. Submitted C fixtures are never executed or compiled into binaries. Local browser checks use Chromium, not all browser engines or classroom hardware. No hosted application deployment was performed.
+A deterministic fixture with 150 simple functions produces 2,250 tokens. Before pagination, its token view rendered 2,250 table rows and 16,243 DOM nodes. After pagination, a local repeat rendered 100 rows and approximately 1,300 DOM nodes. All rows remain reachable through pagination. These observations establish a reduced rendering workload for this fixture, not a generalized speedup or C execution benchmark. Timing observations are intentionally not promoted to product claims.
 
-The Full pipeline sample has one function, 121 significant tokens, two security findings, zero resource warnings, and seven conservative TAC rewrites. Original and optimized streams each have 33 operational instructions. No instruction-count reduction or measured runtime gain is claimed.
+## Demonstration evidence
 
-Syntax errors and unsupported preprocessing withhold downstream outputs. Live-variable analysis remains NOT_IMPLEMENTED. New depth limits return input errors for excessive expression trees. The intentionally unsafe fixtures are educational examples, not results from auditing an external project.
+The Full pipeline sample still has one function, 121 significant tokens, two security findings, zero resource warnings, and seven conservative TAC rewrites. Original and optimized streams each have 33 operational instructions. The application shows actual transformations; no instruction reduction or measured runtime gain is claimed.
 
-## Sharing assets
+Actual screenshots in `demo` were captured from the production UI and real local backend. `frontend/scripts/capture-review.mjs` reproduces the screenshots and stress observation. The Word guide was rendered and its page images visually reviewed. The Markdown faculty guide contains the three-minute script and honest examiner answers.
 
-The demo directory contains actual desktop overview, diagnostics, control-flow, and mobile captures. The shareable Word product guide was rendered and its page images inspected. Render intermediates are excluded from Git. Source provenance and existing third-party notices remain preserved.
+## Publication and boundaries
 
-The GitHub workflow repeats the project verification after publication. Its hosted result is separate from the local checks above.
+Before pushing, tracked/public files were checked for credential/private-key patterns, local environment files, private captures, and generated output. Deliberately fake teaching credential values remain in samples. GitHub Actions runs the same tests/build/production-browser checks and verifies parser checksums; failed runs retain test evidence. Its result must be checked for the final pushed commit, separately from local verification.
+
+Submitted C is never executed or compiled into a binary. Chromium checks do not cover every browser engine or classroom machine. Full preprocessing/types, precise aliases/memory values, path/interprocedural proofs, DCE, and CSE remain unavailable. The client timeout does not guarantee server cancellation. Passing these tests is evidence for the tested behavior, not proof that every possible defect is absent.

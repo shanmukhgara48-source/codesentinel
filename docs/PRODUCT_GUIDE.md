@@ -28,7 +28,7 @@ The CodeMirror editor shows line numbers and colors C syntax. It supports undo, 
 |---|---|
 | Overview | Function, token, finding, and transformation counts, plus stage coverage. |
 | Diagnostics | Compiler messages and Security, Resources, Performance, and Duplication findings. |
-| Compiler | AST, symbols, tokens, selected semantic checks, and the unavailable data-flow stage. |
+| Compiler | AST, symbols, tokens, selected semantic checks, and scalar data flow with iteration traces. |
 | Control flow | Basic blocks, branch and loop edges, block instructions, zoom, and pan. |
 | Optimization | Original TAC, optimized TAC, and explanations of actual rewrites. |
 
@@ -38,7 +38,7 @@ A token is a meaningful piece of code, such as a name, number, keyword, or opera
 
 ### Symbols and selected semantic checks
 
-The symbol table records declared names, types, scopes, and source locations. Separate symbol IDs distinguish variables that have the same name in different scopes. Resolved references show which declaration a use belongs to. Checks cover selected undeclared uses, duplicate declarations and definitions, conflicting supported function signatures, and whether a return has a value when required.
+The symbol table records declared names, types, scopes, and source locations. Separate symbol IDs distinguish variables that have the same name in different scopes. Resolved references show which declaration a use belongs to. Checks cover selected undeclared uses, duplicate declarations and definitions, conflicting supported function signatures, whether a return has a value when required, and whether supported non-void functions have explicit return paths.
 
 ## Intermediate code and optimization
 
@@ -66,7 +66,7 @@ The optimizer uses a signed 32-bit integer profile. It refuses folding that woul
 
 ### Control flow
 
-A basic block is a sequence of instructions with a single control-transfer boundary. The control-flow graph connects these blocks with true, false, jump, fall-through, and return edges. Select a block to inspect its instructions. The graph comes from optimized TAC. Disconnected blocks remain visible because dead-code elimination is not implemented.
+A basic block is a sequence of instructions with a single control-transfer boundary. The control-flow graph connects these blocks with true, false, jump, fall-through, and return edges. Select a block to inspect its instructions, follow an incoming/outgoing edge, or use Fit graph for an overview. The graph comes from optimized TAC. Disconnected blocks remain visible because dead-code elimination is not implemented.
 
 Short-circuit logic is represented with branches. A for-loop continue goes to its update step; a while-loop continue goes to its condition. Unsupported or semantically invalid functions receive a reason for withheld TAC and CFG instead of an incomplete instruction list.
 
@@ -74,7 +74,7 @@ Short-circuit logic is represented with branches. A for-loop continue goes to it
 
 ### Security findings
 
-The rules inspect resolved library calls in the AST. They flag gets, capacity review for strcpy, strcat, and sprintf, and literal scanf-family formats with an unbounded unsuppressed %s. They also track limited local input provenance into system and identify credential-like names assigned string literals. Comments that merely mention these APIs are not treated as calls.
+The rules inspect resolved library calls in the AST. They flag gets, capacity review for strcpy, strcat, and sprintf, and literal scanf-family formats with an unbounded unsuppressed %s or %[ conversion. They also track limited local input provenance into system and identify credential-like names assigned string literals. Comments that merely mention these APIs are not treated as calls.
 
 Each finding includes a rule ID, severity, confidence, source location, excerpt, explanation, suggested action, and limitations. A warning may still appear for an operation that is safe with a particular input. A bounded format avoids one rule but does not prove complete safety.
 
@@ -102,7 +102,7 @@ Credential detection is a name-and-literal heuristic. It can match fake placehol
 - Open Diagnostics. Filter or search the findings, expand one, and follow its source link.
 - Open Compiler to inspect tokens, AST, symbols, and selected semantic checks.
 - Use Optimization to compare TAC and read the transformation log. Use Control flow to select a block.
-- Expand Additional analysis for resources, complexity, and duplication. Export JSON when the source and result match.
+- Expand Additional analysis for resources, complexity, and duplication. Export JSON when the source and result match. Compiler → Data flow shows final sets, block facts, and iteration traces.
 
 ### A demonstration in under three minutes
 
@@ -112,7 +112,7 @@ Credential detection is a name-and-literal heuristic. It can match fake placehol
 | 30 to 65 seconds | Show an AST node and its symbol or token information. |
 | 65 to 100 seconds | Open the unbounded input finding and highlight scanf in the source. |
 | 100 to 135 seconds | Show an actual constant rewrite and explain folding and propagation. |
-| 135 to 160 seconds | Select a CFG block and explain a branch or loop edge. |
+| 135 to 160 seconds | Select a CFG block, explain an edge, and show converged data flow. |
 | 160 to 180 seconds | Show the allocation hints and export the report. |
 
 ### Useful learning samples
@@ -163,16 +163,24 @@ Completed means the pass finished within its supported scope. Partial means some
 
 The tool analyzes one file. It recognizes only a limited catalog for stdio.h, stdlib.h, string.h, and stddef.h. It does not read headers, expand macros, or perform full C type checking. Other preprocessing withholds downstream results. General alias, path, taint, and interprocedural analysis are absent.
 
-TAC arithmetic is restricted to supported signed 32-bit decimal operands. Octal, hexadecimal, suffixed or wider arithmetic, pointer arithmetic, persistent local storage, and other unsupported cases are withheld. Full live-variable analysis, reaching definitions, dead-code elimination, and common subexpression elimination are not implemented. There are no user accounts, database, saved history, or hosted application deployment.
+TAC arithmetic is restricted to supported signed 32-bit decimal operands. Octal, hexadecimal, suffixed or wider arithmetic, pointer arithmetic, persistent local storage, and other unsupported cases are withheld. Live variables and reaching definitions are implemented for scalar identities and temporaries, with iteration traces and limits. Memory contents, dead-code elimination, and common subexpression elimination remain unavailable. There are no user accounts, database, saved history, or hosted application deployment.
 
 Input limits are 64 KiB of source, 10,000 significant tokens, 128 delimiter levels, 512 grammar-tree levels, and 128 AST levels. Excessive expressions return a structured input error. The service does not execute submitted C, launch a native preprocessor, or write submitted source files.
 
 ### What was verified
 
-The 12 October 2026 local review passed 73 backend tests, the frontend production build, and 11 browser tests against the real Java backend. The browser suite includes three consecutive complete demo rehearsals, JSON export, syntax recovery, stale-result protection, upload, dialogs, and layouts at 320, 768, and 1440 pixels. Parser provenance checksums also passed.
+The 12 October 2026 local review passed 90 backend tests, the frontend production build, and 16 browser tests against the real Java backend. The browser suite includes three consecutive complete demo rehearsals, JSON export, syntax recovery, stale-result protection, upload, dialogs, and layouts at 320, 390, 768, and 1440 pixels. Parser provenance checksums also passed.
 
 Regression tests cover long-credential redaction, excessive expression depth and recovery, decimal versus octal handling, pointer elements, persistent storage, function return forms, prototype signatures and scope, and finding categories. These checks provide evidence for the reviewed cases. They do not prove the absence of every possible defect or full C conformance.
 
 ### Before a faculty demonstration
 
 Start the packaged application fresh, confirm the local backend is connected, and rehearse on the actual presentation screen. Keep the saved screenshots as a backup. Explain a warning together with its stated limitation, and use the existing viva guide for detailed compiler questions.
+
+## Data flow in simple English
+
+Live-variable analysis asks which values may be read later before another write replaces them. Reaching definitions asks which earlier writes may still supply a value. Both repeat equations over reachable blocks until nothing changes. This unchanged state is a fixed point. IN and OUT show the sets before and after each block. The trace shows the actual changes made in each round.
+
+The analysis uses original TAC, so students can still see uses that constant propagation later simplifies. Unknown incoming values and possible memory writes are labeled. The workbench does not prove array contents, aliases, or definite assignment. Large functions that exceed the stated budgets receive a reason for unavailable sets. No advanced optimization is added on top of these analyses.
+
+AST inspection includes Source connections. A selected node links its tokens, resolved names, TAC records, and CFG blocks. Individual instructions link back to source and explain their operand types and read/write/call effects. Tokens and other tables use 100-row pages. Tab lists support arrow keys and Home/End; Esc then Tab leaves the editor. Motion follows the operating system preference.

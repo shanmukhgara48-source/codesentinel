@@ -2,7 +2,7 @@
 
 CodeSentinel is a local Compiler Design Laboratory workbench. One C source file travels through a real ANTLR parser, Java analysis passes, and a React dashboard. Every displayed output is generated from the submitted program. The program is never executed or compiled into a binary.
 
-The teaching journey is **source → tokens → AST → scoped symbols → findings → TAC → optimized TAC → CFG → dashboard → JSON**.
+The teaching journey is **source → tokens → AST → scoped symbols → findings → TAC → optimized TAC → CFG → scalar data flow → dashboard → JSON**.
 
 ## Run the workbench
 
@@ -36,16 +36,19 @@ The Vite proxy forwards `/api` to the Java server. Changes to Java require resta
 - A CodeMirror editor with syntax highlighting, line numbers, undo/redo, matching brackets, and highlighted source locations.
 - Real tokens, comments, located syntax errors, and a simplified expandable AST.
 - An educational symbol table with global/function/block/for scopes, parameters, shadowing, and resolved references.
-- Selected declaration, prototype, undeclared-use, and return-presence checks.
+- Selected declaration, prototype, undeclared-use, return-presence, and explicit-return-path checks.
 - Structured TAC for the supported subset, short-circuit branches, and correct loop break/continue targets.
 - Checked signed 32-bit constant folding and conservative block-local constant propagation, with source-linked rewrite explanations.
-- Selectable SVG basic blocks, labelled CFG edges, zoom controls, and drag-to-pan, derived from optimized TAC.
+- Selectable SVG basic blocks arranged by control-flow depth, labelled edges, unreachable markers, fit/zoom/pan, keyboard inspection, and predecessor/successor navigation, derived from optimized TAC.
+- Typed TAC operands, AST node IDs, and explicit read/write/call/volatile/trap effects; AST source connections link tokens, resolved symbols, instructions, and CFG blocks.
+- Live-variable and reaching-definitions fixed points on original TAC, with block facts, source-linked definitions, iteration traces, and explicit per-function limits.
 - AST-based unsafe-library-call rules, limited command provenance, and credential-name heuristics.
 - Allocation call-site analysis, local guard/release hints, static structure metrics, and function-body fingerprints.
 - Backend heuristic review-priority contributions in exported JSON; resources, complexity, and duplication under Additional analysis.
 - Sample selection, category/search filters, source navigation, unavailable states, stale-result protection, and suspected-credential redaction in analysis responses.
+- Bounded table rendering (100 rows per page), request timeouts and unreadable-response recovery, arrow-key tab navigation, visible focus, and reduced-motion support.
 
-Live-variable analysis, DCE, CSE, full C type checking, preprocessing, general alias/taint/path analysis, and interprocedural analysis remain deferred. Their coverage is stated in the response/UI. There are no accounts, database, history, or hosted deployment.
+Memory-value data flow, DCE, CSE, full C type checking, preprocessing, general alias/taint/path analysis, and interprocedural analysis remain deferred. Their coverage is stated in the response/UI. There are no accounts, database, history, or hosted deployment.
 
 ## Stack and source map
 
@@ -74,7 +77,7 @@ Only these endpoints are implemented:
 | `GET /api/samples` | C fixtures with teaching purposes |
 | `POST /api/analyze` | One complete analysis; JSON body contains `source` and optional display `filename` |
 
-Completed analysis requests return `{success:true,data:...}`, including syntax errors as structured analysis results. Malformed/blank requests return 400; source larger than 64 KiB returns 413; unexpected failures return a safe 500. Defaults also limit significant tokens to 10,000 and delimiter nesting to 128, grammar-tree depth to 512, and AST depth to 128. Source ranges use one-based lines/columns and UTF-16 offsets compatible with the editor.
+Completed analysis requests return `{success:true,data:...}`, including syntax errors as structured analysis results. Malformed/blank requests return 400; source larger than 64 KiB returns 413; wrong methods/media types return 405/415; unexpected failures return a safe 500. Defaults also limit significant tokens to 10,000 and delimiter nesting to 128, grammar-tree depth to 512, and AST depth to 128. Source ranges use one-based lines/columns and UTF-16 offsets compatible with the editor.
 
 This release targets single-file lab programs. Four headers (`stdio.h`, `stdlib.h`, `string.h`, `stddef.h`) use a limited catalog. Headers are never read or expanded. Macros, conditional preprocessing, and other headers withhold downstream analysis. Unsupported statements/declarators are disclosed; a function with unsupported TAC is skipped, while other passes can report their own assessed coverage.
 
@@ -122,10 +125,11 @@ Tests validate expected structured results; they never run the C fixtures or gen
 2. Open Compiler: tokens, AST, symbols, and resolved references.
 3. Open Diagnostics → Security, inspect a finding, and follow its source link.
 4. Open Optimization and compare original/optimized TAC and the folding/propagation explanations.
-5. Open Control flow, select a CFG block, and explain a branch and loop back edge.
-6. Expand Additional analysis to show the checked allocation, then export JSON.
+5. Open Control flow, select a CFG block, and explain a branch and loop back edge. Use Fit graph for an overview.
+6. Open Compiler → Data flow and show a converged fixed point and the final unchanged round.
+7. Expand Additional analysis to show the checked allocation, then export JSON.
 
-Use [the viva guide](docs/VIVA_GUIDE.md) for timing, worked examples, questions, and syntax-error recovery. The `demo` directory contains actual 1440px desktop and 390px mobile captures from this UI revision. An optional recording script is available as `(cd frontend && npm run demo:record)` while the app runs; no video recording is included by default.
+Use [the viva guide](docs/VIVA_GUIDE.md) for timing, worked examples, questions, and syntax-error recovery. The `demo` directory contains actual 1440px desktop, 768px tablet, and 390px mobile captures from this UI revision. Recreate them with `(cd frontend && node scripts/capture-review.mjs)` while the packaged demo is running. An optional recording script is available as `(cd frontend && npm run demo:record)` while the app runs; no video recording is included by default.
 
 ## Documentation
 
@@ -138,7 +142,23 @@ Use [the viva guide](docs/VIVA_GUIDE.md) for timing, worked examples, questions,
 - [Parser walkthrough](docs/PARSER_WALKTHROUGH.md)
 - [Security and other rules](docs/SECURITY_RULES.md)
 - [Analysis limitations](docs/ANALYSIS_LIMITATIONS.md)
+- [Faculty demonstration guide](docs/FACULTY_GUIDE.md)
+- [Data flow explained](docs/DATA_FLOW.md)
 - [Viva guide](docs/VIVA_GUIDE.md)
 - [Third-party provenance and adaptations](docs/THIRD_PARTY.md)
 
 CodeSentinel is an educational static analyzer. Warnings are review evidence, complexity is a source metric, and a score of zero means no scored findings in the assessed scope.
+
+## Actual interface captures
+
+These images were captured from the built React app against the local Java backend using the bundled teaching sample.
+
+![Desktop overview](demo/desktop-overview.jpg)
+
+![Control flow inspection](demo/desktop-control-flow.jpg)
+
+![Live variable analysis](demo/desktop-data-flow.jpg)
+
+[Tablet compiler view](demo/tablet-compiler.jpg) · [Mobile overview](demo/mobile-overview.jpg) · [Optimization](demo/desktop-optimization.jpg)
+
+Schema **1.1** keeps the existing response fields and adds instruction operand/effect metadata and computed `dataFlow` results. Data flow analyzes the original instruction stream; the displayed CFG remains based on optimized TAC. Their instruction/block boundaries are preserved by the current two optimization passes. Unknown incoming values and possible call/store writes are labeled, and incomplete fixed points are withheld. See [data flow explained](docs/DATA_FLOW.md).

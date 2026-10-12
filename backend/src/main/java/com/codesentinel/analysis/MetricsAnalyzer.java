@@ -46,7 +46,7 @@ public class MetricsAnalyzer {
     List<FunctionMetrics> functions = new ArrayList<>();
     for (Node fn : ast.all())
       if (fn.kind.equals("Function")) {
-        var all = fn.all();
+        var all = evaluatedNodes(fn);
         int branches = (int) all.stream().filter(n -> n.kind.equals("If")).count(),
             loops =
                 (int)
@@ -72,7 +72,7 @@ public class MetricsAnalyzer {
                 loops,
                 depth,
                 1 + branches + loops + logical,
-                all.stream().anyMatch(n -> n.kind.equals("Unsupported"))
+                all.stream().anyMatch(n -> n.kind.equals("Unsupported") || n.attributes.containsKey("unsupported"))
                     ? "PARTIAL"
                     : "COMPLETED"));
       }
@@ -87,6 +87,16 @@ public class MetricsAnalyzer {
         functions.stream().mapToInt(FunctionMetrics::maxNesting).max().orElse(0),
         functions,
         findings);
+  }
+
+  private List<Node> evaluatedNodes(Node n) {
+    List<Node> result = new ArrayList<>();
+    Deque<Node> pending = new ArrayDeque<>(); pending.push(n);
+    while (!pending.isEmpty()) {
+      Node current = pending.pop(); result.add(current);
+      if (!current.kind.equals("Sizeof")) current.children.forEach(pending::push);
+    }
+    return result;
   }
 
   private int nesting(Node n, int depth, String fn) {

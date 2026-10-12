@@ -26,12 +26,14 @@ public class TacGenerator {
   }
 
   private List<Instruction> code;
+  private final Map<String, SymbolAnalyzer.Symbol> symbolInfo = new HashMap<>();
   private final Map<String, String> display = new LinkedHashMap<>();
   private final Deque<LoopTargets> loops = new ArrayDeque<>();
   private int temp, label, serial;
 
   public List<FunctionIR> generate(
       Node ast, List<SymbolAnalyzer.Symbol> symbols, List<Diagnostic> semantics) {
+    symbols.forEach(s -> symbolInfo.put(s.id(), s));
     symbols.forEach(
         s ->
             display.put(s.id(), s.origin().equals("LIBRARY") ? s.name() : s.name() + "@" + s.id()));
@@ -47,9 +49,12 @@ public class TacGenerator {
             semantics.stream()
                 .filter(
                     d ->
-                        d.range() != null
-                            && d.range().startOffset() >= fn.range.startOffset()
+                        d.severity().equals("ERROR") && d.range() != null
+                            && ((d.range().startOffset() >= fn.range.startOffset()
                             && d.range().endOffset() <= fn.range.endOffset())
+                            || ast.children.stream().noneMatch(top -> top.kind.equals("Function")
+                                && d.range().startOffset() >= top.range.startOffset()
+                                && d.range().endOffset() <= top.range.endOffset())))
                 .toList();
         if (!errors.isEmpty()) {
           functions.add(
@@ -68,13 +73,15 @@ public class TacGenerator {
           continue;
         }
         try {
+          if (fn.all().stream().anyMatch(n -> n.kind.equals("Unsupported") || n.attributes.containsKey("unsupported")))
+            throw new UnsupportedIR(fn, "This function contains an unsupported construct or signature.");
           Node body =
               fn.children.stream().filter(n -> n.kind.equals("Block")).findFirst().orElseThrow();
           statement(body);
           if (code.isEmpty() || !code.getLast().op().equals("RETURN"))
-            emit("RETURN", null, List.of(), null, null, null, fn, false);
+            emit("RETURN", null, fn.text("name").equals("main") ? List.of("0") : List.of(), null, null, null, fn, fn.text("name").equals("main"));
           functions.add(
-              new FunctionIR(fn.id, fn.text("name"), "COMPLETED", List.copyOf(code), List.of()));
+              new FunctionIR(fn.id, fn.text("name"), "COMPLETED", new IrMetadata().annotate(code, symbols), List.of()));
         } catch (UnsupportedIR e) {
           functions.add(
               new FunctionIR(
@@ -240,6 +247,13 @@ public class TacGenerator {
       case "Identifier" -> {
         if (n.text("symbolId").isEmpty())
           throw new UnsupportedIR(n, "Unresolved identifier " + n.text("name"));
+        if (n.text("type").contains("volatile")
+            && ((Number) n.attributes.getOrDefault("pointerDepth", 0)).intValue() == 0 && !n.text("category").equals("FUNCTION")
+            && ((List<?>) n.attributes.getOrDefault("arrayDimensions", List.of())).isEmpty()) {
+          String read = freshTemp();
+          emit("READ", read, List.of(n.text("symbolId")), null, null, null, n, isInteger(n));
+          yield new Value(read, isInteger(n));
+        }
         yield new Value(n.text("symbolId"), isInteger(n));
       }
       case "Literal" -> new Value(n.text("value"), n.text("literalType").equals("int")
@@ -264,6 +278,8 @@ public class TacGenerator {
           mark(end, n);
           yield new Value(result, true);
         }
+        if (volatileReads(n) > 1)
+          throw new UnsupportedIR(n, "Multiple unsequenced volatile reads are outside the TAC ordering model.");
         if (n.all().stream().anyMatch(c -> Set.of("Call", "Update", "Assignment").contains(c.kind)))
           throw new UnsupportedIR(
               n,
@@ -294,6 +310,8 @@ public class TacGenerator {
         Value v = expression(n.children.getFirst());
         String result = freshTemp();
         if (op.equals("*")) {
+          if (!pointerLike(n.children.getFirst()))
+            throw new UnsupportedIR(n, "Dereference requires a modeled pointer or array operand.");
           boolean integer =
               integerElement(n.children.getFirst());
           emit("LOAD", result, List.of(v.ref()), null, null, null, n, integer);
@@ -301,12 +319,14 @@ public class TacGenerator {
         }
         if (!Set.of("!", "+", "-").contains(op))
           throw new UnsupportedIR(n, "Unsupported unary operator " + op);
+        if (!op.equals("!") && !v.integerSafe())
+          throw new UnsupportedIR(n, "Unary arithmetic requires a supported signed-int operand.");
         emit("UNARY", result, List.of(v.ref()), op, null, null, n, v.integerSafe());
         yield new Value(result, v.integerSafe());
       }
       case "Call" -> {
         Node callee = n.children.getFirst();
-        if (!callee.kind.equals("Identifier"))
+        if (!callee.kind.equals("Identifier") || !callee.text("category").equals("FUNCTION"))
           throw new UnsupportedIR(n, "Indirect function calls are not lowered.");
         List<String> args = new ArrayList<>();
         args.add(expression(callee).ref());
@@ -353,17 +373,44 @@ public class TacGenerator {
   }
 
   private Value address(Node n) {
-    if (n.kind.equals("Unary") && n.text("operator").equals("*"))
+    if (n.kind.equals("Unary") && n.text("operator").equals("*")) {
+      if (!pointerLike(n.children.getFirst())) throw new UnsupportedIR(n, "A memory target requires a modeled pointer.");
       return expression(n.children.getFirst());
+    }
     String result = freshTemp();
     if (n.kind.equals("Identifier"))
       emit("ADDRESS", result, List.of(n.text("symbolId")), null, null, null, n, false);
     else if (n.kind.equals("Index")) {
+      if (!pointerLike(n.children.getFirst()))
+        throw new UnsupportedIR(n, "Indexing requires a modeled pointer or array base.");
       var base = expression(n.children.get(0));
       var index = expression(n.children.get(1));
+      if (!index.integerSafe()) throw new UnsupportedIR(n, "Array indexing requires a supported signed-int index.");
       emit("INDEX_ADDRESS", result, List.of(base.ref(), index.ref()), null, null, null, n, false);
     } else throw new UnsupportedIR(n, "Unsupported assignment/address target.");
     return new Value(result, false);
+  }
+
+  private long volatileReads(Node n) {
+    if (n.kind.equals("Sizeof")) return 0;
+    if ((n.kind.equals("Identifier") && n.text("type").contains("volatile")
+            && ((Number) n.attributes.getOrDefault("pointerDepth", 0)).intValue() == 0
+            && ((List<?>) n.attributes.getOrDefault("arrayDimensions", List.of())).isEmpty())
+        || ((n.kind.equals("Index") || (n.kind.equals("Unary") && n.text("operator").equals("*")))
+            && !n.children.isEmpty() && n.children.getFirst().text("type").contains("volatile"))) return 1;
+    return n.children.stream().mapToLong(this::volatileReads).sum();
+  }
+
+  private boolean pointerLike(Node n) {
+    return n.kind.equals("Identifier") && (((Number) n.attributes.getOrDefault("pointerDepth", 0)).intValue() > 0
+        || !((List<?>) n.attributes.getOrDefault("arrayDimensions", List.of())).isEmpty());
+  }
+
+  private void validateWritable(Node n) {
+    var info = symbolInfo.get(n.text("symbolId"));
+    if (info == null || info.category().equals("FUNCTION") || info.category().equals("CONSTANT")
+        || !info.arrayDimensions().isEmpty() || (info.pointerDepth() == 0 && info.type().contains("const")))
+      throw new UnsupportedIR(n, "The target is not a supported writable scalar.");
   }
 
   private Value assign(Node n) {
@@ -389,16 +436,18 @@ public class TacGenerator {
               + " evaluation order.");
     Value value = expression(rhs);
     if (lhs.kind.equals("Identifier")) {
-      Value target = expression(lhs);
+      validateWritable(lhs);
+      Value target = new Value(lhs.text("symbolId"), isInteger(lhs));
       if (!op.equals("=")) {
         if (!Set.of("+=", "-=", "*=", "/=", "%=").contains(op)
             || !target.integerSafe()
             || !value.integerSafe()) throw new UnsupportedIR(n, "Unsupported compound assignment.");
+        Value prior = expression(lhs);
         String t = freshTemp();
         emit(
             "BINARY",
             t,
-            List.of(target.ref(), value.ref()),
+            List.of(prior.ref(), value.ref()),
             op.substring(0, 1),
             null,
             null,
@@ -418,6 +467,8 @@ public class TacGenerator {
       return new Value(value.ref(), target.integerSafe() && value.integerSafe());
     }
     if (!op.equals("=")) throw new UnsupportedIR(n, "Compound memory assignments are not modeled.");
+    Node base = lhs.kind.equals("Index") || lhs.kind.equals("Unary") ? lhs.children.getFirst() : lhs;
+    if (base.text("type").contains("const")) throw new UnsupportedIR(n, "Writes through a const-qualified element are not permitted.");
     Value addr = address(lhs);
     emit("STORE", null, List.of(addr.ref(), value.ref()), null, null, null, n, false);
     return value;
@@ -427,6 +478,7 @@ public class TacGenerator {
     Node operand = n.children.getFirst();
     if (!operand.kind.equals("Identifier"))
       throw new UnsupportedIR(n, "Only ordinary scalar increments are modeled.");
+    validateWritable(operand);
     Value v = expression(operand);
     if (!v.integerSafe()) throw new UnsupportedIR(n, "Non-int increment is unsupported.");
     String old = freshTemp();
@@ -441,7 +493,7 @@ public class TacGenerator {
         null,
         n,
         true);
-    emit("ASSIGN", v.ref(), List.of(next), null, null, null, n, true);
+    emit("ASSIGN", operand.text("symbolId"), List.of(next), null, null, null, n, true);
     return new Value(Boolean.TRUE.equals(n.attributes.get("postfix")) ? old : next, true);
   }
 
@@ -503,6 +555,7 @@ public class TacGenerator {
       case "JUMP" -> "goto " + target;
       case "BRANCH" -> "if " + a.getFirst() + " goto " + target + " else " + alternative;
       case "RETURN" -> "return" + (a.isEmpty() ? "" : " " + a.getFirst());
+      case "READ" -> dest + " = volatile_read " + a.getFirst();
       case "ASSIGN" -> dest + " = " + a.getFirst();
       case "BINARY" -> dest + " = " + a.get(0) + " " + operator + " " + a.get(1);
       case "UNARY" -> dest + " = " + operator + a.getFirst();

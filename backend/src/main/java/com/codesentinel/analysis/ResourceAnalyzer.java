@@ -45,7 +45,7 @@ public class ResourceAnalyzer {
         List<Node> nodes = fn.all();
         for (Node n : nodes) {
           if (n.kind.equals("Declaration")) largeArray(n, fn.text("name"));
-          if (!FindingFactory.libraryCall(n)) continue;
+          if (!FindingFactory.libraryCall(n) || unevaluated(n)) continue;
           String api = FindingFactory.callName(n);
           if (api.equals("free")) {
             frees++;
@@ -73,7 +73,7 @@ public class ResourceAnalyzer {
                   && nodes.stream()
                       .filter(
                           c ->
-                              FindingFactory.libraryCall(c)
+                              FindingFactory.libraryCall(c) && !unevaluated(c)
                                   && FindingFactory.callName(c).equals("free"))
                       .anyMatch(
                           c ->
@@ -154,6 +154,12 @@ public class ResourceAnalyzer {
     }
   }
 
+  private boolean unevaluated(Node n) {
+    for (Node p = parents.get(n); p != null; p = parents.get(p))
+      if (p.kind.equals("Sizeof")) return true;
+    return false;
+  }
+
   private boolean inFunction(Node n) {
     for (Node p = parents.get(n); p != null; p = parents.get(p))
       if (p.kind.equals("Function")) return true;
@@ -175,7 +181,7 @@ public class ResourceAnalyzer {
     if (parent != null && parent.kind.equals("Return")) return true;
     if (id.isEmpty()) return false;
     for (Node n : nodes)
-      if (n.range.startOffset() > allocation.range.startOffset()) {
+      if (!unevaluated(n) && n.range.startOffset() > allocation.range.startOffset()) {
         if (n.kind.equals("Return")
             && n.all().stream()
                 .anyMatch(c -> c.kind.equals("Identifier") && c.text("symbolId").equals(id)))

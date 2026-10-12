@@ -151,7 +151,7 @@ class CompilerTest {
     assertEquals("COMPLETED", p.ir().getFirst().status());
     assertTrue(
         p.optimized().functions().getFirst().instructions().stream()
-            .anyMatch(i -> i.text().contains("v@") && i.op().equals("BINARY")));
+            .anyMatch(i -> i.text().contains("v@") && i.op().equals("READ")));
   }
 
   @Test

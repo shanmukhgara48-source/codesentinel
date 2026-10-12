@@ -18,7 +18,7 @@ The workbench exposes intermediate representations so each compiler concept can 
 | Control-flow graph | CFG nodes represent blocks and synthetic entry/exit; typed edges show branches, jumps, fall-through, returns, and back edges. React `Cfg` renders the Java result. |
 | Constant folding | `Optimizer.fold` computes supported constant operations using BigInteger intermediates and signed 32-bit checks. |
 | Constant propagation | `Optimizer.optimize` replaces operands whose resolved scalar has a known constant in the current block. It clears bindings at control/effect barriers. |
-| Data-flow analysis | Live-variable IN/OUT sets would require a backward fixed point over the graph. This extension is deferred and shown as NOT_IMPLEMENTED. Block-local constant propagation is implemented; general inter-block data flow is absent. |
+| Data-flow analysis | Live variables use a backward fixed point; reaching definitions use a forward fixed point over reachable original-TAC blocks. DataFlowAnalyzer exposes equations, transfer facts, and changed sets per round. Memory contents and path-sensitive analysis are not modeled. |
 
 Paths for Java classes are under `backend/src/main/java/com/codesentinel`; frontend components are under `frontend/src`.
 
@@ -61,3 +61,9 @@ Both streams have six operational instructions plus two declaration records. No 
 ## Optimization validity
 
 The profile is signed 32-bit integer arithmetic, with wider intermediate computation and checked ranges. Overflow, division by zero, INT_MIN divided/remainder by -1, floating-point conversions, and uncertain volatile/addressed bindings are left unchanged or withheld. Calls, loads/stores, address operations, casts, sizeof, labels, and control-flow boundaries clear uncertain bindings. The optimizer does not move calls or memory operations and does not propagate constants across branch joins or loop iterations.
+
+## Readable data flow
+
+A fixed point means that one more iteration leaves every set unchanged. Live variables answer which scalar values may be used later. Reaching definitions answer which earlier writes may still supply a value. IN/OUT mean immediately before/after a block. USE/DEF describe reads before a local write and definite writes. GEN/KILL describe surviving writes and replaced earlier writes. The UI explains the equations and source locations. See [worked example](DATA_FLOW.md).
+
+Typed operand records distinguish literals, resolved scalars, array addresses, functions, and temporaries. Effects distinguish definite writes, possible writes, memory reads/writes, calls, volatile access, and potentially trapping arithmetic. A discarded volatile expression emits a READ, and sizeof operands emit no evaluated operations.

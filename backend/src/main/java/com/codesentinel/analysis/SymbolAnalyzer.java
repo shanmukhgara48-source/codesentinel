@@ -163,6 +163,11 @@ public class SymbolAnalyzer {
         n.children.stream()
             .filter(c -> c.kind.equals("Block"))
             .forEach(b -> b.children.forEach(this::visit));
+        boolean returnsVoid = n.text("type").replaceAll("\\b(static|inline|const|volatile)\\b", "").strip().equals("void")
+            && ((Number) n.attributes.getOrDefault("pointerDepth", 0)).intValue() == 0;
+        if (!returnsVoid && !n.text("name").equals("main") && n.children.stream().filter(c -> c.kind.equals("Block")).noneMatch(this::mustReturn))
+          diagnostic("SEM-FALLTHROUGH", n, "A value-returning function may reach its end without a value.",
+              "Only explicit return paths are recognized; infinite-loop termination is not inferred.");
         pop();
         function = previous;
       }
@@ -193,6 +198,7 @@ public class SymbolAnalyzer {
                   + " not performed.");
         else {
           n.attr("symbolId", s.id())
+              .attr("category", s.category())
               .attr("type", s.type())
               .attr("origin", s.origin())
               .attr("pointerDepth", s.pointerDepth())
@@ -217,6 +223,12 @@ public class SymbolAnalyzer {
       case "Unsupported" -> {}
       default -> n.children.forEach(this::visit);
     }
+  }
+
+  private boolean mustReturn(Node n) {
+    if (n.kind.equals("Return")) return true;
+    if (Set.of("Block", "Statements").contains(n.kind)) return n.children.stream().anyMatch(this::mustReturn);
+    return n.kind.equals("If") && n.children.size() == 3 && mustReturn(n.children.get(1)) && mustReturn(n.children.get(2));
   }
 
   private void diagnostic(String code, Node n, String message, String explanation) {

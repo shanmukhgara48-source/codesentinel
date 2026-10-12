@@ -160,6 +160,8 @@ public class AstBuilder {
             .attr("type", type)
             .attr("pointerDepth", pointers)
             .attr("arrayDimensions", arrays);
+    if (d.pointer().stream().anyMatch(ptr -> !ptr.getText().matches("\\*+")))
+      n.attr("unsupported", "Qualified pointer declarators are outside the current type model.");
     if (direct.getText().contains("[") && arrays.size() != 1) {
       n.attr("unsupported", "Only one fixed-size array dimension is modeled.");
     }
@@ -215,12 +217,13 @@ public class AstBuilder {
 
   private Node binary(ParserRuleContext c) {
     Node result = build(c.getChild(0));
-    for (int i = 1; i + 1 < c.getChildCount(); i += 2)
-      result =
-          node("Binary", c)
-              .attr("operator", c.getChild(i).getText())
-              .add(result)
-              .add(build(c.getChild(i + 1)));
+    for (int i = 1; i + 1 < c.getChildCount(); i += 2) {
+      Node right = build(c.getChild(i + 1));
+      Node binary = node("Binary", c).attr("operator", c.getChild(i).getText()).add(result).add(right);
+      binary.range = new SourceRange(result.range.startOffset(), right.range.endOffset(),
+          result.range.line(), result.range.column(), right.range.endLine(), right.range.endColumn());
+      result = binary;
+    }
     return result;
   }
 

@@ -27,3 +27,15 @@ jobs:
       - run: ./scripts/test.sh
         env:
           CI: '1'
+      - name: Verify parser provenance
+        run: sha256sum -c SHA256SUMS
+        working-directory: backend/vendor/c
+      - name: Retain failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-failure
+          path: |
+            backend/target/surefire-reports/
+            frontend/test-results/
+          retention-days: 7

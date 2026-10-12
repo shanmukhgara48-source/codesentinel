@@ -149,6 +149,13 @@ export function Stat({ label, value, hint }) {
   );
 }
 export function Table({ columns, rows, empty = "No rows in this result." }) {
+  const [page, setPage] = useState(0);
+  const pageSize = 100,
+    current = Math.min(
+      page,
+      Math.max(0, Math.ceil(rows.length / pageSize) - 1),
+    );
+  const visible = rows.slice(current * pageSize, (current + 1) * pageSize);
   return (
     <div className="max-w-full overflow-auto">
       <table className="w-full border-collapse text-left text-[13px] leading-5">
@@ -165,7 +172,7 @@ export function Table({ columns, rows, empty = "No rows in this result." }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
+          {visible.map((r, i) => (
             <tr
               key={r.id || i}
               className="border-t border-[#ECEEF1] hover:bg-[#F9F9FB]"
@@ -179,6 +186,33 @@ export function Table({ columns, rows, empty = "No rows in this result." }) {
           ))}
         </tbody>
       </table>
+      {rows.length > pageSize && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 border-t border-[#ECEEF1] p-3 text-xs text-[#686C76]"
+          aria-label="Table pagination"
+        >
+          <span aria-live="polite">
+            Rows {current * pageSize + 1}–
+            {Math.min((current + 1) * pageSize, rows.length)} of {rows.length}
+          </span>
+          <div className="flex gap-2">
+            <button
+              disabled={current === 0}
+              onClick={() => setPage(current - 1)}
+              className="rounded-full border border-[#E5E7EB] px-3 py-2 disabled:opacity-40"
+            >
+              Previous rows
+            </button>
+            <button
+              disabled={(current + 1) * pageSize >= rows.length}
+              onClick={() => setPage(current + 1)}
+              className="rounded-full border border-[#E5E7EB] px-3 py-2 disabled:opacity-40"
+            >
+              Next rows
+            </button>
+          </div>
+        </div>
+      )}
       {!rows.length && <p className={`p-6 text-xs ${muted}`}>{empty}</p>}
     </div>
   );
@@ -342,4 +376,25 @@ export function SectionHeading({ title, description, children }) {
       {children}
     </div>
   );
+}
+
+// Standard horizontal tab navigation, shared by both tab lists.
+export function tabKeys(event) {
+  const tabs = Array.from(event.currentTarget.querySelectorAll('[role="tab"]'));
+  const index = tabs.indexOf(document.activeElement);
+  if (
+    index < 0 ||
+    !["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)
+  )
+    return;
+  event.preventDefault();
+  const next =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabs.length - 1
+        : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
+          tabs.length;
+  tabs[next].focus();
+  tabs[next].click();
 }

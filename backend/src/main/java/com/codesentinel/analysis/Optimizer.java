@@ -60,7 +60,7 @@ public class Optimizer {
         Map<String, String> constants = new HashMap<>();
         for (int i = 0; i < code.size(); i++) {
           Instruction ins = code.get(i);
-          if (Set.of("LABEL", "CALL", "STORE", "LOAD", "ADDRESS", "INDEX_ADDRESS", "CAST", "SIZEOF")
+          if (Set.of("LABEL", "CALL", "STORE", "LOAD", "READ", "ADDRESS", "INDEX_ADDRESS", "CAST", "SIZEOF")
               .contains(ins.op())) constants.clear();
           List<String> args = ins.args();
           if (ins.integerSafe()
@@ -103,7 +103,7 @@ public class Optimizer {
         }
         if (before == changes.size()) break;
       }
-      result.add(new TacGenerator.FunctionIR(f.id(), f.name(), f.status(), code, f.diagnostics()));
+      result.add(new TacGenerator.FunctionIR(f.id(), f.name(), f.status(), new IrMetadata().annotate(code, symbols), f.diagnostics()));
     }
     return new Result(
         result, changes, new ArrayList<>(diagnostics.values()), count(input), count(result));

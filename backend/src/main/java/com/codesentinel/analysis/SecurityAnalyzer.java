@@ -20,6 +20,8 @@ public class SecurityAnalyzer {
   }
 
   private void visit(Node n) {
+    // sizeof operands are type-checked but never executed in the supported non-VLA subset.
+    if (n.kind.equals("Sizeof")) return;
     if (n.kind.equals("Function")) {
       String previous = function;
       function = n.text("name");
@@ -29,7 +31,8 @@ public class SecurityAnalyzer {
       provenance.clear();
       return;
     }
-    if (Set.of("If", "While", "For", "DoWhile", "Unsupported").contains(n.kind)) {
+    if (Set.of("If", "While", "For", "DoWhile", "Unsupported").contains(n.kind)
+        || (n.kind.equals("Binary") && Set.of("&&", "||").contains(n.text("operator")))) {
       provenance.clear();
       for (Node child : n.children) {
         provenance.clear();
@@ -94,7 +97,7 @@ public class SecurityAnalyzer {
               "HIGH",
               n,
               "",
-              "A literal format contains an unsuppressed %s conversion without a field width.",
+              "A literal format contains an unsuppressed %s or %[ conversion without a field width.",
               "Set a width smaller than the destination capacity, allowing space for the"
                   + " terminator, or use fgets.",
               "A width bounds this conversion but does not by itself prove destination safety.");
@@ -203,7 +206,7 @@ public class SecurityAnalyzer {
 
   public static boolean unboundedString(String format) {
     return conversions(format).stream()
-        .anyMatch(c -> c.type() == 's' && !c.suppressed() && !c.bounded());
+        .anyMatch(c -> (c.type() == 's' || c.type() == '[') && !c.suppressed() && !c.bounded());
   }
 
   private static List<Conversion> conversions(String format) {

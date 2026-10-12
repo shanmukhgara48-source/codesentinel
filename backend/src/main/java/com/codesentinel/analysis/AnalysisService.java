@@ -39,7 +39,7 @@ public class AnalysisService {
     String hash = hash(source);
     Map<String, Object> out = new LinkedHashMap<>(), summary = new LinkedHashMap<>();
     Map<String, Module> modules = new LinkedHashMap<>();
-    out.put("schemaVersion", "1.0");
+    out.put("schemaVersion", "1.1");
     out.put("analysisId", "a-" + hash.substring(0, 16));
     out.put(
         "sourceMetadata",
@@ -103,10 +103,10 @@ public class AnalysisService {
     modules.put(
         "dataFlow",
         module(
-            "NOT_IMPLEMENTED",
+            "SKIPPED",
             null,
             List.of(),
-            "Live-variable analysis is deferred. No IN/OUT sets are fabricated."));
+            "Data flow requires supported, semantically valid TAC."));
     out.put(
         "limitations",
         List.of(
@@ -203,6 +203,12 @@ public class AnalysisService {
             graphs,
             irDiagnostics,
             "Built from optimized TAC; disconnected/unreachable blocks remain visible."));
+    var flow = new DataFlowAnalyzer().analyze(tac, symbols.symbols());
+    boolean flowPartial = flow.stream().anyMatch(f -> !f.status().equals("COMPLETED"));
+    modules.put("dataFlow", module(flowPartial ? "PARTIAL" : "COMPLETED", flow, List.of(),
+        "Live variables and reaching definitions use original TAC and reachable blocks. Scalar values and temporaries only; memory contents, alias precision and definite assignment are not proved.",
+        "Calls and stores conservatively add possible writes to globals and address-taken values. Entry definitions mean unknown incoming values. Unreachable blocks have empty IN/OUT sets.",
+        "Limits per function: 256 blocks, 1,024 definitions, 128 rounds, 100,000 state entries. Traces retain at most 50,000 entries per analysis; truncation is disclosed."));
     FindingFactory factory = new FindingFactory(source, file);
     var security = new SecurityAnalyzer(factory).analyze(ast);
     var resources = new ResourceAnalyzer(factory, arrayThreshold).analyze(ast);
@@ -270,7 +276,7 @@ public class AnalysisService {
     out.put("diagnostics", diagnostics);
     out.put(
         "status",
-        partial || irPartial
+        partial || irPartial || flowPartial
             ? "PARTIAL_ANALYSIS"
             : !diagnostics.isEmpty() || !all.isEmpty() ? "SUCCESS_WITH_WARNINGS" : "SUCCESS");
     return new ReportProjection(mapper).redact(out, ast, parsed.tokens());
