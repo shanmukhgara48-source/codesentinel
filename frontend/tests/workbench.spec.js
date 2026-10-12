@@ -1,0 +1,284 @@
+import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+
+async function ready(page) {
+  await page.goto("/");
+  await expect(page.getByLabel("Sample program")).toHaveValue("hero");
+  await expect(
+    page.getByText("Local backend connected", { exact: true }),
+  ).toHaveText("Local backend connected");
+}
+async function analyze(page) {
+  const response = page.waitForResponse(
+    (r) => r.url().endsWith("/api/analyze") && r.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: /^Analyze code/ }).click();
+  const payload = await (await response).json();
+  expect(payload.success).toBe(true);
+  await expect(
+    page.getByRole("button", { name: /^Analyze code/ }),
+  ).toBeEnabled();
+  await expect(page.getByRole("tabpanel")).not.toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  return payload;
+}
+const section = (page, name) =>
+  page
+    .locator("section:not([aria-label])")
+    .filter({ has: page.getByRole("heading", { name, exact: true }) });
+
+test("performance and duplication findings have their own diagnostic categories", async ({
+  page,
+}) => {
+  await ready(page);
+  for (const [sample, category, heading] of [
+    ["loops", "Performance", "Nested loop structure"],
+    ["duplicates", "Duplication", "Repeated function body"],
+  ]) {
+    await page.getByLabel("Sample program").selectOption(sample);
+    await analyze(page);
+    await page.getByRole("tab", { name: /^Diagnostics/ }).click();
+    await page.getByRole("button", { name: category, exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: heading }).first(),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Resources", exact: true }).click();
+    await expect(page.getByRole("heading", { name: heading })).toHaveCount(0);
+  }
+});
+
+for (let run = 1; run <= 3; run++)
+  test(`complete real-backend demo rehearsal ${run}`, async ({ page }) => {
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await ready(page);
+    await expect(
+      page.getByRole("heading", { name: "Your code has a story." }),
+    ).toBeVisible();
+    const report = await analyze(page);
+    expect(report.data.summary).toMatchObject({
+      functionCount: 1,
+      securityFindings: 2,
+      resourceWarnings: 0,
+    });
+    await expect(page.getByTestId("stat-security-findings")).toContainText("2");
+    await page.getByRole("tab", { name: "Diagnostics", exact: false }).click();
+    await page.getByRole("button", { name: "Security", exact: true }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: "Unbounded formatted string input",
+        exact: true,
+      }),
+    ).toBeVisible();
+    const finding = report.data.modules.security.data.find(
+      (f) => f.ruleId === "CS-SEC-005",
+    );
+    await page
+      .getByRole("button", {
+        name: `View line ${finding.range.line} in source`,
+        exact: true,
+      })
+      .click();
+    await expect(page.getByLabel("C source")).toBeFocused();
+    await expect(page.locator(".source-location")).toContainText("scanf");
+    expect(
+      await page.evaluate(() => window.getSelection().toString()),
+    ).toContain("scanf");
+    await page.getByRole("tab", { name: "Compiler", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Function review_submission", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Function", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("tab", { name: "Symbols", exact: true }).click();
+    await expect(
+      page.getByRole("cell", { name: "score", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("tab", { name: "Data flow", exact: true }).click();
+    await expect(
+      page.getByText(/Live-variable analysis is deferred/),
+    ).toBeVisible();
+    await page.getByRole("tab", { name: "Optimization", exact: true }).click();
+    await expect(section(page, "Optimized TAC")).toContainText("base@");
+    await expect(section(page, "Transformation log")).toContainText(
+      "CONSTANT FOLDING",
+    );
+    await page.getByRole("tab", { name: "Control flow", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Inspect block B0", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "B0", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await expect(page.getByText("125%", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Reset graph view" }).click();
+    await expect(page.getByText("100%", { exact: true })).toBeVisible();
+    await page
+      .locator("summary")
+      .filter({ hasText: "Additional analysis" })
+      .click();
+    await expect(page.getByTestId("stat-allocation-calls")).toContainText("1");
+    const download = page.waitForEvent("download");
+    await page
+      .getByRole("button", { name: "Export JSON", exact: true })
+      .click();
+    const artifact = await download;
+    expect(JSON.parse(await readFile(await artifact.path(), "utf8"))).toEqual(
+      report,
+    );
+    expect(errors).toEqual([]);
+  });
+
+test("syntax error, unsupported preprocessing, and successful recovery", async ({
+  page,
+}) => {
+  await ready(page);
+  await page.getByLabel("Sample program").selectOption("syntax-error");
+  const broken = await analyze(page);
+  expect(broken.data.status).toBe("PARSE_ERROR");
+  await expect(page.getByTestId("analysis-status")).toHaveText("Syntax error");
+  await expect(page.getByRole("tabpanel")).toContainText("C-SYNTAX");
+  await page.getByRole("tab", { name: "Compiler", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "This stage has no published result" }),
+  ).toBeVisible();
+  await page.getByLabel("Sample program").selectOption("macros");
+  expect((await analyze(page)).data.status).toBe("PARTIAL_ANALYSIS");
+  await page.getByRole("tab", { name: "Compiler", exact: true }).click();
+  await expect(
+    page.getByText(/Preprocessing could change this program/),
+  ).toBeVisible();
+  await page.getByLabel("Sample program").selectOption("bounded");
+  expect((await analyze(page)).data.status).toBe("SUCCESS");
+  await page.getByRole("tab", { name: "Overview", exact: true }).click();
+  await expect(page.getByTestId("stat-security-findings")).toContainText("0");
+});
+
+test("editing disables exports and source links, reanalysis restores them", async ({
+  page,
+}) => {
+  await ready(page);
+  await analyze(page);
+  await page.getByLabel("C source").fill("int changed(void){return 9;}");
+  await expect(
+    page.getByText(/These results belong to the previous source/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Export JSON", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: /View line .* in source/ }).first(),
+  ).toBeDisabled();
+  const report = await analyze(page);
+  expect(report.data.modules.ast.data.children[0].attributes.name).toBe(
+    "changed",
+  );
+  await expect(
+    page.getByRole("button", { name: "Export JSON", exact: true }),
+  ).toBeEnabled();
+});
+
+test("superseded backend response cannot overwrite newer code", async ({
+  page,
+}) => {
+  await ready(page);
+  let release, arrived;
+  const gate = new Promise((r) => (release = r)),
+    reached = new Promise((r) => (arrived = r));
+  let first = true;
+  await page.route("**/api/analyze", async (route) => {
+    const server = await route.fetch();
+    if (first) {
+      first = false;
+      arrived();
+      await gate;
+    }
+    try {
+      await route.fulfill({ response: server });
+    } catch {} // A superseded browser request is aborted.
+  });
+  await page.getByRole("button", { name: /^Analyze code/ }).click();
+  await reached;
+  await expect(
+    page.getByRole("heading", { name: "Making sense of your code" }),
+  ).toBeVisible();
+  await page.getByLabel("C source").fill("int latest(void){return 7;}");
+  const latest = await analyze(page);
+  release();
+  expect(latest.data.modules.ast.data.children[0].attributes.name).toBe(
+    "latest",
+  );
+  await page.getByRole("tab", { name: "Compiler", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Function latest", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Function review_submission",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+});
+
+test("upload preserves filename; reset, samples dialog, and help work", async ({
+  page,
+}) => {
+  await ready(page);
+  await page.getByLabel("Upload C file").setInputFiles({
+    name: "lesson.c",
+    mimeType: "text/plain",
+    buffer: Buffer.from("int uploaded(void){return 3;}"),
+  });
+  await expect(
+    page.getByRole("heading", { name: "lesson.c", exact: true }),
+  ).toBeVisible();
+  expect((await analyze(page)).data.sourceMetadata.filename).toBe("lesson.c");
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /^Analyze code/ }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("heading", { name: "Your code has a story." }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Samples", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: /Constant arithmetic/ })
+    .click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.getByLabel("C source").press("ControlOrMeta+Enter");
+  await expect(page.getByText("Result ready", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Help", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Live-variable analysis is not implemented",
+  );
+  await page.getByRole("button", { name: "Close dialog" }).click();
+});
+
+for (const width of [320, 768, 1440])
+  test(`layout and selectable graphs at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await ready(page);
+    await analyze(page);
+    const fits = () =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      );
+    expect(await fits()).toBe(true);
+    await page.getByRole("tab", { name: "Control flow", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Inspect block B0", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "B0", exact: true }),
+    ).toBeVisible();
+    expect(await fits()).toBe(true);
+    await page.getByRole("tab", { name: "Optimization", exact: true }).click();
+    await expect(section(page, "Optimized TAC")).toBeVisible();
+    expect(await fits()).toBe(true);
+  });

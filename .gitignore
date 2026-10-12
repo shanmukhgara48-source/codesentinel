@@ -1,0 +1,16 @@
+backend/target/
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+docs/.rendered/
+# Preserve alternate local captures without publishing unreviewed screenshots.
+demo/live-build.jpg
+demo/port5273-updated-ui.jpg
