@@ -30,3 +30,9 @@ Actual screenshots in `demo` were captured from the production UI and real local
 Before pushing, tracked/public files were checked for credential/private-key patterns, local environment files, private captures, and generated output. Deliberately fake teaching credential values remain in samples. GitHub Actions runs the same tests/build/production-browser checks and verifies parser checksums; failed runs retain test evidence. Its result must be checked for the final pushed commit, separately from local verification.
 
 Submitted C is never executed or compiled into a binary. Chromium checks do not cover every browser engine or classroom machine. Full preprocessing/types, precise aliases/memory values, path/interprocedural proofs, DCE, and CSE remain unavailable. The client timeout does not guarantee server cancellation. Passing these tests is evidence for the tested behavior, not proof that every possible defect is absent.
+
+## Beginner guide follow-up - 14 October 2026
+
+The additive Start here guide passed the frontend production build and all **21 Playwright Chromium cases** against the packaged local Java backend. The original three demonstration rehearsals still pass. Five added cases check direct links to real compiler stages, backend-derived evidence, stale/loading/failed-result withholding, unavailable macro results, practice-answer feedback, focus, and 320/768/1440px layouts. Browser errors are asserted in the relevant cases. The failed-request case uses a controlled response; normal lesson analysis uses the real Java endpoint.
+
+The guide uses the existing Arithmetic fixture and does not change backend algorithms. The earlier 90 backend checks are historical evidence; they were not rerun for this frontend/documentation change. The separate illustrated Class 5 introduction is rendered and visually reviewed. Classroom readability or learning effectiveness has not been evaluated with children.

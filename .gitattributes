@@ -1,0 +1,2 @@
+# PDFs are binary artifacts; do not apply text whitespace or line-ending rules.
+*.pdf binary

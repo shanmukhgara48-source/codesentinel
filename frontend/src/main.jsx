@@ -25,6 +25,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import "./framework.css";
+import BeginnerGuide from "./beginner";
 import { ModuleStatus, Empty, button, tabKeys } from "./ui";
 import {
   AnalysisOverview,
@@ -33,6 +34,7 @@ import {
 } from "./workspace";
 
 const tabs = [
+  "Start here",
   "Overview",
   "Diagnostics",
   "Compiler",
@@ -89,8 +91,32 @@ function App() {
     sequence = useRef(0),
     controller = useRef(null),
     workspace = useRef(null),
-    dialog = useRef(null);
+    dialog = useRef(null),
+    analysisPanel = useRef(null);
   const [additional, setAdditional] = useState(false);
+  const [compilerStage, setCompilerStage] = useState("AST");
+  const [guideStep, setGuideStep] = useState(0);
+  const [guideAnswer, setGuideAnswer] = useState(null);
+  function openGuide() {
+    setTab("Start here");
+    requestAnimationFrame(() => {
+      analysisPanel.current?.focus({ preventScroll: true });
+      analysisPanel.current?.scrollIntoView({
+        block: "start",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
+    });
+  }
+  function navigate(section, stage = "AST") {
+    setCompilerStage(stage);
+    setTab(section);
+    requestAnimationFrame(() => {
+      if (analysisPanel.current) analysisPanel.current.scrollTop = 0;
+      analysisPanel.current?.focus({ preventScroll: true });
+    });
+  }
   const stale =
     !!result &&
     (source !== analyzed?.source || filename !== analyzed?.filename);
@@ -349,8 +375,15 @@ function App() {
                 Understand your C code<span className="text-[#7947FF]">.</span>
               </h1>
               <p className="mt-3 text-[13px] leading-6 text-[#686C76]">
-                Explore diagnostics, compiler stages, and control flow.
+                Read your code like a recipe. See its steps, choices, and things
+                to check.
               </p>
+              <button
+                onClick={openGuide}
+                className="mt-2 inline-flex items-center gap-2 rounded-lg py-2 text-sm font-medium text-[#6534CC]"
+              >
+                New to coding? Start here <ArrowRight size={15} />
+              </button>
             </div>
             <button
               onClick={analyze}
@@ -615,6 +648,7 @@ function App() {
                 ))}
               </div>
               <div
+                ref={analysisPanel}
                 id="analysis-panel"
                 role="tabpanel"
                 tabIndex={0}
@@ -622,7 +656,27 @@ function App() {
                 aria-busy={loading}
                 className="min-h-[550px] p-4 sm:p-5 lg:h-[616px] lg:min-h-0 lg:overflow-y-auto"
               >
-                {loading ? (
+                {tab === "Start here" ? (
+                  <BeginnerGuide
+                    step={guideStep}
+                    setStep={setGuideStep}
+                    answer={guideAnswer}
+                    setAnswer={setGuideAnswer}
+                    result={result}
+                    stale={stale}
+                    loading={loading}
+                    error={error}
+                    onLoadExample={() => {
+                      const sample = samples.find((s) => s.id === "arithmetic");
+                      if (sample) chooseSample(sample);
+                    }}
+                    canLoadExample={samples.some((s) => s.id === "arithmetic")}
+                    onAnalyze={analyze}
+                    canAnalyze={!!source.trim()}
+                    onNavigate={navigate}
+                    onLocation={onLocation}
+                  />
+                ) : loading ? (
                   <div
                     role="status"
                     className="flex min-h-[530px] flex-col items-center justify-center text-center"
@@ -711,10 +765,10 @@ function App() {
                       )}
                       {tab === "Compiler" && (
                         <Compiler
-                          key={`compiler-${result.analysisId}`}
+                          key={`compiler-${result.analysisId}-${compilerStage}`}
                           result={result}
                           onLocation={onLocation}
-                          initialTab="AST"
+                          initialTab={compilerStage}
                           stages={[
                             "AST",
                             "Symbols",

@@ -30,6 +30,14 @@ npm run dev
 
 The Vite proxy forwards `/api` to the Java server. Changes to Java require restarting `backend.sh`; frontend development uses Vite hot reload. After editing, stop the packaged demo before rebuilding, then restart with `start.sh`. A running JVM must keep its jar unchanged. Setup/full verification enforce this with a port check. Browser-only tests can reuse the running demo.
 
+## Start with the easy guide
+
+Select **New to coding? Start here** or the **Start here** tab. Nine short lessons explain code as a recipe, tokens as pieces, variables as named boxes, and control flow as roads. Each lesson introduces its technical word after the idea. Load the existing **Arithmetic** sample with **Load tiny example**, then select **Analyze this code**. Loading replaces the editor contents but never executes C.
+
+The guide shows real tokens, symbols, original instructions, completed data-flow rounds and findings from the current response, with links to source or the corresponding detailed view. Its analogy pictures and sums are labeled teaching examples. Editing, loading or a failed request hides old evidence in the guide. Missing analysis is explained rather than shown as zero. All original detailed tabs remain available.
+
+See [the simple reader guide](docs/BEGINNER_GUIDE.md) for an adult-led first lesson. The [illustrated Class 5 PDF](docs/CodeSentinel_Class_5_Guide.pdf) is a plain-language introduction; the existing detailed PDFs remain unchanged.
+
 ## Implemented features
 
 - A light workbench using the supplied gray/white/black/violet palette, pill navigation, rounded cards, and a resizable editor/results split.

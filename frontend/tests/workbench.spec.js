@@ -443,3 +443,213 @@ test("reduced motion, editor escape, and data flow fit a mobile screen", async (
     ),
   ).toBe(true);
 });
+
+test("easy guide links real arithmetic evidence to its detailed stages", async ({
+  page,
+}) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await ready(page);
+  await page.getByRole("button", { name: "New to coding? Start here" }).click();
+  await expect(page.getByRole("tabpanel")).toBeFocused();
+  await page
+    .getByRole("button", { name: "2. Little pieces", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Open the real Tokens view" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Load tiny example" }).click();
+  await expect(page.getByLabel("Sample program")).toHaveValue("arithmetic");
+  await expect(page.getByLabel("C source")).toContainText(
+    "int calculate(void)",
+  );
+  const report = await analyze(page);
+  await expect(
+    page.getByText("First pieces from your file", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Open the real Tokens view" }).click();
+  await expect(
+    page.getByRole("tab", { name: "Tokens", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("cell", { name: "calculate", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Start here", exact: true }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "First, find the little pieces",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "4. Named boxes", exact: true })
+    .click();
+  await expect(
+    page.getByText("Names from your file", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Open the real Symbols view" })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "Symbols", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Start here", exact: true }).click();
+  await page
+    .getByRole("button", { name: "5. Small steps", exact: true })
+    .click();
+  await expect(
+    page.getByText("First steps from calculate", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Open the real Optimization view" })
+    .click();
+  await expect(section(page, "Optimized TAC")).toContainText("return 20");
+  await page.getByRole("tab", { name: "Start here", exact: true }).click();
+  await page
+    .getByRole("button", { name: "7. Follow values", exact: true })
+    .click();
+  const flow = report.data.modules.dataFlow.data[0];
+  await expect(page.getByRole("tabpanel")).toContainText(
+    `live-variable sets settled in ${flow.liveVariables.rounds} rounds`,
+  );
+  await page
+    .getByRole("button", { name: "Open the real Data flow view" })
+    .click();
+  await expect(page.getByText(/Fixed point reached in/)).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("easy guide hides stale and failed evidence and explains unavailable checks", async ({
+  page,
+}) => {
+  await ready(page);
+  const hero = await analyze(page);
+  await page.getByRole("tab", { name: "Start here", exact: true }).click();
+  await page
+    .getByRole("button", { name: "8. Things to check", exact: true })
+    .click();
+  const finding = hero.data.findings.find((f) => f.ruleId === "CS-SEC-005");
+  await expect(page.getByRole("tabpanel")).toContainText(finding.ruleName);
+  await page
+    .getByRole("button", {
+      name: `Show line ${finding.range.line}`,
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".source-location")).toContainText("scanf");
+  await page.getByLabel("C source").fill("int changed(void){return 9;}");
+  await expect(page.getByRole("tabpanel")).toContainText(
+    "You changed the recipe",
+  );
+  await expect(page.getByRole("button", { name: /^Show line/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Open the real Diagnostics view" }),
+  ).toBeDisabled();
+  await analyze(page);
+  await page
+    .getByRole("button", { name: "7. Follow values", exact: true })
+    .click();
+  await expect(page.getByRole("tabpanel")).toContainText("sets settled");
+  let release, arrived;
+  const gate = new Promise((r) => (release = r)),
+    reached = new Promise((r) => (arrived = r));
+  await page.route("**/api/analyze", async (route) => {
+    arrived();
+    await gate;
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: false,
+        error: "Temporary backend failure",
+      }),
+    });
+  });
+  await page
+    .getByRole("button", { name: "Analyze this code", exact: true })
+    .click();
+  await reached;
+  await expect(page.getByRole("tabpanel")).toContainText(
+    "Wait for its results",
+  );
+  await expect(page.getByRole("tabpanel")).not.toContainText("sets settled");
+  release();
+  await expect(page.getByRole("alert")).toContainText(
+    "Temporary backend failure",
+  );
+  await expect(page.getByRole("tabpanel")).not.toContainText("sets settled");
+  await expect(
+    page.getByRole("button", { name: "Open the real Data flow view" }),
+  ).toBeDisabled();
+  await page.unroute("**/api/analyze");
+  await page.getByLabel("Sample program").selectOption("macros");
+  await analyze(page);
+  await expect(page.getByRole("tabpanel")).toContainText(
+    "No complete value-following result",
+  );
+  await page
+    .getByRole("button", { name: "8. Things to check", exact: true })
+    .click();
+  await expect(page.getByRole("tabpanel")).toContainText(
+    "A missing answer does not mean zero problems",
+  );
+});
+
+for (const width of [320, 768, 1440])
+  test(`easy lessons and knowledge check at ${width}px`, async ({ page }) => {
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text());
+    });
+    await page.setViewportSize({ width, height: 1000 });
+    await ready(page);
+    await page
+      .getByRole("button", { name: "New to coding? Start here" })
+      .click();
+    await page.getByRole("button", { name: "Load tiny example" }).click();
+    await analyze(page);
+    for (const name of [
+      "1. The recipe",
+      "3. The tree",
+      "6. The road map",
+      "9. Your turn",
+    ]) {
+      await page.getByRole("button", { name, exact: true }).click();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+      ).toBe(true);
+    }
+    await page
+      .getByRole("button", { name: "Yes, it runs it", exact: true })
+      .click();
+    await expect(page.getByRole("tabpanel")).toContainText("Try again");
+    await page
+      .getByRole("button", { name: "No, it reads and checks it", exact: true })
+      .click();
+    await expect(page.getByRole("tabpanel")).toContainText("Exactly!");
+    await expect(
+      page.getByRole("button", { name: "Next idea", exact: true }),
+    ).toBeDisabled();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: "A warning says: take a closer look",
+        exact: true,
+      }),
+    ).toBeVisible();
+    // Current built app + real backend captures document the new journey.
+    if (width === 1440 || width === 320) {
+      await page
+        .getByRole("button", { name: "3. The tree", exact: true })
+        .click();
+      await page.screenshot({
+        path: `../output/playwright/easy-guide-${width}.png`,
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+    expect(errors).toEqual([]);
+  });

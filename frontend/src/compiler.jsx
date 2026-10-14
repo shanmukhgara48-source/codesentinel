@@ -10,6 +10,7 @@ import {
   tabKeys,
 } from "./ui";
 import DataFlow from "./dataflow";
+import { StageHint } from "./beginner";
 import { AstExplorer, Cfg } from "./graphs";
 const tabs = [
   "Tokens",
@@ -63,6 +64,7 @@ export default function Compiler({
           ))}
         </div>
       )}
+      <StageHint stage={tab} />
       {tab === "Tokens" && (
         <Panel
           title="Lexer token stream"
